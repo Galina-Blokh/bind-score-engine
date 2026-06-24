@@ -14,5 +14,5 @@ models/
 output/
 notebooks/*_executed.ipynb
 
-# Challenge brief (local copy only)
+# Local brief (not tracked)
 challenge.pdf

@@ -1,6 +1,6 @@
 """Project-wide constants. Values and rationale are documented in README § Design decisions."""
 
-# Horizons required by challenge.pdf
+# Scoring horizons (days since submission creation)
 HORIZONS = (0, 7, 30)
 
 # Temporal split: earliest 80% train, latest 20% held-out test (no random shuffling).

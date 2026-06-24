@@ -1,6 +1,6 @@
 """Held-out test metrics and permutation importance.
 
-Metrics match broker prioritization (challenge.pdf): P@20 = conversion rate in the
+Metrics match broker prioritization: P@20 = conversion rate in the
 top-scored fraction (TOP_K_FRACTION); PR-AUC = imbalanced-class ranking for tuning
 and feature importance. See README § Design decisions and notebooks §3.
 """

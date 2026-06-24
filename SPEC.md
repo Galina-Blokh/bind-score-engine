@@ -76,7 +76,7 @@ Metrics align with **effort prioritization** (~15% bind rate). See README § Des
 | **ROC-AUC** | Secondary test report only |
 
 - Test metrics: ROC-AUC, PR-AUC, precision @ top 20% (reporting — not used for deployment)
-- Task 2: permutation importance (10 repeats, PR-AUC), per horizon + overall mean
+- Permutation importance (10 repeats, PR-AUC), per horizon + overall mean
 - Output: `output/evaluation_report.json`, `output/feature_importance_t*.png`
 
 ## CLI

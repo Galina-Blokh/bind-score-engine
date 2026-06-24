@@ -28,7 +28,7 @@ def _load_bundle(models_dir: Path, t: int) -> dict:
 
 
 def bind_score(submission_id: int, t: int) -> float:
-    """Return P(bind) in [0, 1]; higher means more likely to sell (challenge.pdf API).
+    """Return P(bind) in [0, 1]; higher means more likely to sell.
 
     Requires trained models in models/ (run main.py train first).
     """

@@ -86,7 +86,7 @@ def compute_features(
 
 
 def feature(submission_id: int, t: int) -> dict[str, float]:
-    """Calculate features for a submission at horizon t (challenge.pdf API)."""
+    """Calculate features for a submission at horizon t."""
     submissions, events = load_data()
     return compute_features(submission_id, t, submissions, events)
 

@@ -13,3 +13,6 @@ wheels/
 models/
 output/
 notebooks/*_executed.ipynb
+
+# Challenge brief (local copy only)
+challenge.pdf

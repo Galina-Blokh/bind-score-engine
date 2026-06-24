@@ -77,7 +77,7 @@ def _add_path_args(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Novella bind score engine")
+    parser = argparse.ArgumentParser(description="Bind score engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     train_parser = subparsers.add_parser("train", help="Train models for t in {0,7,30}")

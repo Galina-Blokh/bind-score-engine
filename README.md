@@ -1,11 +1,11 @@
-# Novella Bind Score Engine
+# Bind Score Engine
 
-Bind-score model for Novella E&S insurance submissions. Given `(submission_id, t)` — where `t` is days since creation — the engine returns a **probability of binding** in `[0, 1]`. Higher scores mean the submission is more likely to sell, so brokers can prioritize effort (per [challenge.pdf](challenge.pdf)).
+Bind-score model for E&S insurance submissions. Given `(submission_id, t)` — where `t` is days since creation — the engine returns a **probability of binding** in `[0, 1]`. Higher scores mean the submission is more likely to sell, so brokers can prioritize effort on the highest-ranked queue.
 
 ## 1. Repository layout
 
 ```
-novella/
+bind-score-engine/
 ├── data/
 │   ├── features_submissions.csv   # 881 submissions, label = sold (1) or not (0)
 │   └── features_events.csv        # 17,211 lifecycle events
@@ -18,7 +18,7 @@ novella/
 │   ├── train.py                   # temporal splits + model training
 │   └── evaluate.py                # metrics + permutation importance
 ├── notebooks/
-│   └── exploration.ipynb          # end-to-end walkthrough (this notebook)
+│   └── exploration.ipynb          # end-to-end walkthrough (EDA → scoring)
 ├── tests/
 │   ├── test_features.py           # leakage checks + API tests
 │   ├── test_data_loader.py
@@ -51,9 +51,7 @@ This runs **train → evaluate → sample score** in order. `bind_score()` requi
 Optional: override directories with env vars or CLI flags (defaults come from `src/paths.py`):
 
 ```bash
-export NOVELLA_DATA_DIR="${NOVELLA_DATA_DIR:-data}"
-export NOVELLA_MODELS_DIR="${NOVELLA_MODELS_DIR:-models}"
-uv run python main.py run --data-dir "$NOVELLA_DATA_DIR" --models-dir "$NOVELLA_MODELS_DIR"
+uv run python main.py run --data-dir data --models-dir models
 ```
 
 ### Step-by-step
@@ -74,7 +72,7 @@ uv run jupyter notebook notebooks/exploration.ipynb
 | `score` | Return `bind_score(submission_id, t)` for one submission |
 | Notebook | `notebooks/exploration.ipynb` — EDA, features, training, evaluation, scoring |
 
-### Public API (matches challenge.pdf)
+### Public API
 
 ```python
 from src.features import feature
@@ -94,19 +92,19 @@ This section documents **why** each major choice was made.
 
 | Decision | Rationale |
 |----------|-----------|
-| **Bind score = predicted probability** | PDF asks for a score where higher ⇒ more likely to bind. Classifier `predict_proba` is calibrated for ranking and interpretable as a sale probability. |
-| **Separate model per horizon (t=0, 7, 30)** | PDF stresses early vs late prediction. Feature distributions shift over time (e.g. quotes absent at t=0). One model per `t` avoids forcing a single function to handle all lifecycle stages. |
-| **Final `label` as target at all horizons** | PDF asks to predict bind outcome from early signals. Using the ultimate sold/not-sold label is standard for this setup; all 881 submissions in the dataset are resolved. |
+| **Bind score = predicted probability** | Higher score ⇒ more likely to bind. Classifier `predict_proba` is calibrated for ranking and interpretable as a sale probability. |
+| **Separate model per horizon (t=0, 7, 30)** | Feature distributions shift over the submission lifecycle (e.g. quotes absent at t=0). One model per `t` avoids forcing a single function to handle all stages. |
+| **Final `label` as target at all horizons** | Predict bind outcome from early signals. Using the ultimate sold/not-sold label is standard; all 881 submissions in the dataset are resolved. |
 
 ### Data and leakage prevention
 
 | Decision | Rationale |
 |----------|-----------|
 | **Centralized paths in `src/paths.py`** | `PROJECT_ROOT`, `DATA_DIR`, `MODELS_DIR`, and `OUTPUT_DIR` are derived from the repo layout — no machine-specific paths in code or docs. |
-| **`T_ref = createdDate + t days`** | PDF defines `t` as days since creation. All features use only data on or before `T_ref`. |
+| **`T_ref = createdDate + t days`** | `t` is days since creation. All features use only data on or before `T_ref`. |
 | **Include pre-creation events (471 rows)** | Events are keyed by `submissionId` and often reflect email thread activity before the formal submission timestamp. Excluding them would discard real signal. |
 | **Agent stats use `resolvedDate < T_ref` only** | Agent bind rate (F4) must not use outcomes that were not yet known at scoring time. |
-| **Actual CSV column names** | PDF shows `eventDate` / `QUOTE_RECIEVED`; data uses `event_date` / `QUOTE_RECEIVED`. Code follows the data. |
+| **Actual CSV column names** | Data uses `event_date` / `QUOTE_RECEIVED`; code follows the data. |
 
 ### Feature engineering constants (`src/config.py`)
 
@@ -129,8 +127,8 @@ All splits are **temporal by `createdDate`** — no random shuffling (sales patt
 | Decision | Rationale |
 |----------|-----------|
 | **Hyperparameter CV: `TimeSeriesSplit` on fit period** | Avoids random k-fold leakage across time within the fit window. |
-| **Model selection: validation PR-AUC, tie-break P@20** | PDF goal is broker **prioritization**. Val P@20 alone is unstable on ~140 submissions (top-20% ≈ 29 rows); at t=0 it picked LR (17% val P@20) while RF had better val ranking and test P@20. Selection uses **val PR-AUC** first (stable, matches tuning objective), then val P@20. Each candidate is tuned **once**; the saved artifact is the same refit pipeline reported in the comparison table. |
-| **Report all models on test set** | PDF asks for a comparison table; test metrics are for reporting only, not selection. |
+| **Model selection: validation PR-AUC, tie-break P@20** | Broker **prioritization** is the product goal. Val P@20 alone is unstable on ~140 submissions (top-20% ≈ 29 rows); at t=0 it picked LR (17% val P@20) while RF had better val ranking and test P@20. Selection uses **val PR-AUC** first (stable, matches tuning objective), then val P@20. Each candidate is tuned **once**; the saved artifact is the same refit pipeline reported in the comparison table. |
+| **Report all models on test set** | Full comparison table for transparency; test metrics are for reporting only, not selection. |
 
 ### Evaluation metrics
 
@@ -140,21 +138,19 @@ All splits are **temporal by `createdDate`** — no random shuffling (sales patt
 | **PR-AUC** | Hyperparameter tuning; **primary** model-type selection on validation (~15% bind rate). |
 | **ROC-AUC** | Secondary ranking quality across all thresholds. |
 
-### Task 2 — feature significance
+### Feature significance
 
 **Permutation importance** (10 repeats, PR-AUC scoring) shuffles each feature and measures performance drop. Preferred over tree default impurity because it reflects predictive contribution on the fitted model and is comparable across feature types. Reported **per horizon** and as an **overall mean** across t ∈ {0, 7, 30}.
 
 ---
 
-## 4. Task results and design notes
+## 4. Results
 
 **Dataset:** 881 submissions, **14.8% bind rate** (130 sold), median time-to-resolve **21 days**.
 
 **Split dates:** train cutoff **2020-06-16**, validation from **2020-05-22**, test = submissions after train cutoff.
 
----
-
-### Task 1 — Predictive features
+### Features
 
 Four features at **t ∈ {0, 7, 30}**:
 
@@ -165,11 +161,9 @@ Four features at **t ∈ {0, 7, 30}**:
 | F3 | `cumulative_email_density` | Σ `email_char_count` + 100 × Σ `email_attachment_count` over events ≤ T_ref. |
 | F4 | `agent_smoothed_bind_rate` | Agent bind rate from submissions with `resolvedDate < T_ref`, smoothed (α=10) toward global rate. |
 
-**Why these four:** They map directly to PDF data fields (emails, quotes, agent) and cover engagement velocity (F1), underwriting milestone (F2), information intensity (F3), and broker quality (F4).
+**Why these four:** They cover engagement velocity (F1), underwriting milestone (F2), information intensity (F3), and broker quality (F4) — all computable from email, quote, and agent fields available at scoring time.
 
----
-
-### Task 2 — Feature significance ranking
+### Feature significance
 
 Method: permutation importance on the deployed model per horizon.
 
@@ -192,9 +186,7 @@ Charts: `output/feature_importance_t{0,7,30}.png`
 
 **Interpretation:** Agent history dominates overall. Lifecycle features (quote, email volume) gain importance after the first week when those events have occurred.
 
----
-
-### Task 3 — bind_score(submission_id, t)
+### Model comparison & scoring
 
 Deployed models selected on **validation PR-AUC** (tie-break val P@20), evaluated on held-out **test** set.
 
@@ -220,12 +212,61 @@ Deployed models selected on **validation PR-AUC** (tie-break val P@20), evaluate
 
 ---
 
-## 5. Challenge.pdf checklist
+## 5. Exploration notebook
 
-| Requirement | Status |
-|-------------|--------|
-| 3–4 features, `feature(submission_id, t)`, t ∈ {0,7,30} | Done |
-| Sort features by predictive significance | Done (overall + per horizon) |
-| `bind_score(submission_id, t)` | Done |
-| Git repository | Initialized — commit and push before submit |
-| README: layout, how to run, task results + design notes, model table | Done |
+[`notebooks/exploration.ipynb`](notebooks/exploration.ipynb) is the narrative walkthrough of this repo — same pipeline as the CLI, with plots and commentary:
+
+1. **EDA** — submissions, events, bind rate
+2. **Features** — four time-bounded features at `t ∈ {0, 7, 30}`
+3. **Training** — temporal split, model comparison, evaluation metrics
+4. **Feature significance** — permutation importance by horizon
+5. **Scoring** — `bind_score(submission_id, t)` API
+6. **Challenges & future work** — limitations and path to production
+
+Run the first code cell before any other (sets up `sys.path` and reloads `src.*`). Artifacts written by the notebook match the CLI: `models/t_{0,7,30}/model.joblib`, `models/training_report.json`, `output/evaluation_report.json`, `output/feature_importance_t*.png`.
+
+---
+
+## 6. Challenges
+
+Limitations and open issues in the current implementation:
+
+| Area | Challenge |
+|------|-----------|
+| **Data scale** | 881 submissions, ~15% bind rate — small sample; validation P@20 is noisy (~29 submissions in the top-20% slice). |
+| **Early horizon** | t=0 has weak signal (test P@20 ~1.5× baseline); brokers get limited lift on day of creation. |
+| **Feature set** | Only four hand-engineered features from email/quote/agent fields; no line-of-business, geography, seasonality, or submission content. |
+| **Temporal drift** | Single chronological split; patterns may shift — no rolling retrain or drift monitoring yet. |
+| **Model selection** | Val metrics do not always align with test (especially at t=0); no nested CV or larger holdout for stable deployment picks. |
+| **Probabilities** | `bind_score` is raw `predict_proba` — not calibrated; ranked order is the main product, but absolute probabilities may mislead brokers. |
+| **Leakage discipline** | F4 and event cutoffs are handled carefully, but production needs automated leakage tests on every feature change. |
+| **Operational gap** | Batch notebook/CLI only — no online scoring service, feature store, or broker-facing UI integration. |
+
+---
+
+## 7. Future work
+
+**Serving & integration**
+- REST/gRPC scoring API (`bind_score(submission_id, t)`) with latency SLOs, auth, and versioning per horizon
+- Real-time feature pipeline: ingest events as they arrive, materialize features at T_ref without batch CSV reload
+- Broker workflow hook: ranked queue in CRM, explain-why snippet per submission (top features + recency)
+
+**Model quality**
+- Richer features: LOB, premium band, carrier, seasonality, email NLP/sentiment, quote turnaround time
+- Probability calibration (isotonic / Platt) on a dedicated calibration set; report reliability diagrams
+- Stable model selection: nested temporal CV, larger validation window, or optimize blended metric (val PR-AUC + val P@20)
+- Ensemble or monotonic constraints if business rules require interpretable ranking
+- Continuous retrain on rolling windows; champion/challenger and shadow deployment before cutover
+
+**MLOps & monitoring**
+- Feature store + model registry (e.g. MLflow); pinned artifacts per environment
+- Monitor: bind rate, score distribution, P@20 on recent cohorts, PR-AUC drift, feature null rates (F1 spikes at t+30)
+- Alerts when production P@20 falls below baseline or val/test gap widens
+- Automated leakage and temporal-integrity tests in CI (extend `tests/`)
+
+**Governance & product**
+- Document broker-facing definition of the score; A/B test prioritization vs current manual triage
+- Fairness review across agents/regions; audit trail for scores shown to users
+- Feedback loop: log broker actions (worked / skipped / bound) to refine labels and features over time
+
+An **ideal** system scores every open submission within seconds of new events, ranks an actionable top-K queue with calibrated win probabilities, retrains safely on fresh data, and proves lift in broker conversion — not just offline AUC.

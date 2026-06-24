@@ -1,6 +1,6 @@
-# Novella Bind Score — Technical Specification
+# Bind Score — Technical Specification
 
-Companion to [README.md](README.md). The README is the primary challenge deliverable; this file records implementation contracts.
+Companion to [README.md](README.md). This file records implementation contracts.
 
 ## Paths (`src/paths.py`)
 
@@ -67,7 +67,7 @@ Event types: `EMAIL_INBOUND`, `EMAIL_OUTBOUND`, `QUOTE_RECEIVED`.
 
 ## Evaluation
 
-Metrics align with challenge.pdf **effort prioritization** (~15% bind rate). See README § Design decisions for full rationale.
+Metrics align with **effort prioritization** (~15% bind rate). See README § Design decisions for full rationale.
 
 | Metric | Use |
 |--------|-----|
